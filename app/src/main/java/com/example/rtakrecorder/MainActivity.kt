@@ -1,9 +1,11 @@
 package com.example.rtakrecorder
 
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
@@ -11,32 +13,58 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import android.widget.Toast
 import com.example.rtakrecorder.ui.theme.RTAKrecorderTheme
 
 class MainActivity : ComponentActivity() {
+
+    // Use the modern Activity Result API for permissions
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (isGranted) {
+            // Permission granted, continue with the app
+            Toast.makeText(this, "Permission Granted", Toast.LENGTH_SHORT).show()
+            setContent {
+                RTAKrecorderTheme {
+                    RecordingButtons(PCMRecorder())
+                }
+            }
+        } else {
+            // Permission denied, provide feedback and let the user retry
+            Toast.makeText(this, "Permission Denied. Please allow microphone access.", Toast.LENGTH_LONG).show()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Use your Composable function directly in setContent
-        setContent {
-            RTAKrecorderTheme {
-                RecordingButtons() // Calls the UI with start/stop buttons
+        // Check if the permission is already granted
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            // Permission is granted, continue with the app
+            setContent {
+                RTAKrecorderTheme {
+                    RecordingButtons(PCMRecorder())
+                }
             }
+        } else {
+            // Request the permission
+            requestPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
         }
     }
 }
 
 @Composable
-fun RecordingButtons(modifier: Modifier = Modifier) {
+fun RecordingButtons(recorder: PCMRecorder) {
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
         verticalArrangement = Arrangement.Center
     ) {
         Button(
-            onClick = { /* Handle start recording here */ },
+            onClick = { recorder.startRecording() },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 16.dp)
@@ -44,7 +72,7 @@ fun RecordingButtons(modifier: Modifier = Modifier) {
             Text(text = "Start Recording")
         }
         Button(
-            onClick = { /* Handle stop recording here */ },
+            onClick = { recorder.stopRecording() },
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(text = "Stop Recording")
@@ -56,6 +84,6 @@ fun RecordingButtons(modifier: Modifier = Modifier) {
 @Composable
 fun RecordingButtonsPreview() {
     RTAKrecorderTheme {
-        RecordingButtons()
+        RecordingButtons(PCMRecorder())
     }
 }
