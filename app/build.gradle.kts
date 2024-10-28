@@ -47,6 +47,13 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    externalNativeBuild {
+        cmake {
+            path = file("C:/Users/jakek/Downloads/ATAK resources/codec2/CMakeLists.txt") // Corrected path format
+            version = "3.30.5" // Ensure the version matches the CMake version in Android Studio
+        }
+    }
 }
 
 dependencies {
