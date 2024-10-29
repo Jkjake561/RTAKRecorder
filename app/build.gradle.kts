@@ -36,6 +36,9 @@ android {
     kotlinOptions {
         jvmTarget = "1.8"
     }
+    // Specify the NDK version here
+    ndkVersion = "26.1.10909125" // Set this to match the NDK version you are using
+
     buildFeatures {
         compose = true
     }
@@ -50,7 +53,7 @@ android {
 
     externalNativeBuild {
         cmake {
-            path = file("C:/Users/jakek/Downloads/ATAK resources/codec2/CMakeLists.txt") // Corrected path format
+            path = file("src/main/codec2/CMakeLists.txt") // Corrected path format
             version = "3.30.5" // Ensure the version matches the CMake version in Android Studio
         }
     }
