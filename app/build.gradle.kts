@@ -47,6 +47,20 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+        }
+    }
+
+    productFlavors {
+        defaultConfig {
+            ndk {
+                abiFilters.add("arm64-v8a");
+            }
+        }
+    }
 }
 
 dependencies {
