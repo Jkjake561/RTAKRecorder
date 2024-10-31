@@ -58,6 +58,21 @@ public class Codec2 implements AutoCloseable {
     // Both "directByteBuffer" and "byteArray" cannot be non-null, only one or the other can be passed.
     private static native ByteBuffer nativeDecodeCodec2(long codec2StatePtr, ByteBuffer directByteBuffer, byte[] byteArray, Class<RuntimeException> runtimeExceptionClass) throws  RuntimeException;
 
+    public ByteBuffer decode(@NotNull byte[] codec2ByteArray) throws RuntimeException {
+        return nativeEncodeCodec2(codec2StatePtr, null, codec2ByteArray, RuntimeException.class);
+    }
+
+    public ByteBuffer decode(@NotNull ByteBuffer codec2Buffer) throws RuntimeException {
+        if (codec2Buffer.isDirect())
+            return nativeEncodeCodec2(codec2StatePtr, codec2Buffer, null, RuntimeException.class);
+        else {
+            if (codec2Buffer.hasArray())
+                return nativeEncodeCodec2(codec2StatePtr, null, codec2Buffer.array(), RuntimeException.class);
+            else
+                throw new RuntimeException("Unable to retrieve backing array of non-direct PCM buffer");
+        }
+    }
+
     public ByteBuffer encode(@NotNull byte[] pcmByteArray) throws RuntimeException {
         return nativeEncodeCodec2(codec2StatePtr, null, pcmByteArray, RuntimeException.class);
     }
