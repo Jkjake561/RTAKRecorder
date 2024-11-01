@@ -3,6 +3,8 @@ plugins {
     alias(libs.plugins.jetbrains.kotlin.android)
 }
 
+tasks.register("testClasses")
+
 android {
     namespace = "com.example.rtakrecorder"
     compileSdk = 34
