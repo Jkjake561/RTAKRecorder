@@ -112,6 +112,20 @@ fun RecordingButtons(recorder: PCMRecorder) {
         ) {
             Text(text = "Play Recording")
         }
+        // New button to play the Codec2 file
+        Button(
+            onClick = {
+                recorder.getOutputFilePath()?.let { filePath ->
+                    val codec2FilePath = filePath.replace(".pcm", ".c2")
+                    recorder.playCodec2File(codec2FilePath)
+                } ?: run {
+                    Toast.makeText(context, "No Codec2 file to play", Toast.LENGTH_LONG).show()
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(text = "Play Codec2 File")
+        }
     }
 }
 
