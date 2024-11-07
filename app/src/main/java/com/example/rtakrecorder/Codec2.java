@@ -22,7 +22,17 @@ public class Codec2 implements AutoCloseable {
         _1200,
         _700C
     }
-
+    public static byte[] makeHeader(int mode) {
+        byte[] header = new byte[7];
+        header[0] = (byte) 0xc0; // Codec2 magic number
+        header[1] = (byte) 0xde; // Codec2 magic number
+        header[2] = (byte) 0xc2; // Codec2 identifier
+        header[3] = 1; // version_major
+        header[4] = 0; // version_minor
+        header[5] = (byte) mode; // codec mode
+        header[6] = 0; // flags
+        return header;
+    }
     private boolean closed = false;
 
     private final long codec2StatePtr;
@@ -59,19 +69,20 @@ public class Codec2 implements AutoCloseable {
     private static native ByteBuffer nativeDecodeCodec2(long codec2StatePtr, ByteBuffer directByteBuffer, byte[] byteArray, Class<RuntimeException> runtimeExceptionClass) throws  RuntimeException;
 
     public ByteBuffer decode(@NotNull byte[] codec2ByteArray) throws RuntimeException {
-        return nativeEncodeCodec2(codec2StatePtr, null, codec2ByteArray, RuntimeException.class);
+        return nativeDecodeCodec2(codec2StatePtr, null, codec2ByteArray, RuntimeException.class);
     }
 
     public ByteBuffer decode(@NotNull ByteBuffer codec2Buffer) throws RuntimeException {
         if (codec2Buffer.isDirect())
-            return nativeEncodeCodec2(codec2StatePtr, codec2Buffer, null, RuntimeException.class);
+            return nativeDecodeCodec2(codec2StatePtr, codec2Buffer, null, RuntimeException.class);
         else {
             if (codec2Buffer.hasArray())
-                return nativeEncodeCodec2(codec2StatePtr, null, codec2Buffer.array(), RuntimeException.class);
+                return nativeDecodeCodec2(codec2StatePtr, null, codec2Buffer.array(), RuntimeException.class);
             else
-                throw new RuntimeException("Unable to retrieve backing array of non-direct PCM buffer");
+                throw new RuntimeException("Unable to retrieve backing array of non-direct Codec2 buffer");
         }
     }
+
 
     public ByteBuffer encode(@NotNull byte[] pcmByteArray) throws RuntimeException {
         return nativeEncodeCodec2(codec2StatePtr, null, pcmByteArray, RuntimeException.class);
