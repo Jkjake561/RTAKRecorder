@@ -6,6 +6,8 @@ import org.jetbrains.annotations.NotNull;
 
 import java.nio.ByteBuffer;
 
+
+
 public class Codec2 implements AutoCloseable {
     static {
         System.loadLibrary("Codec2Binding");
@@ -32,6 +34,30 @@ public class Codec2 implements AutoCloseable {
         header[5] = (byte) mode; // codec mode
         header[6] = 0; // flags
         return header;
+    }
+    public int getEncodedFrameSize() {
+        switch (mode) {
+            case _3200:
+                return 8; // Adjust based on actual frame sizes for each mode
+            case _2400:
+                return 8;
+            case _1600:
+                return 8;
+            case _1400:
+                return 8;
+            case _1300:
+                return 6;
+            case _1200:
+                return 6;
+            case _700C:
+                return 6;
+            default:
+                throw new IllegalArgumentException("Unsupported mode: " + mode);
+        }
+    }
+    public int getPCMFrameSize() {
+        // All modes use 160 PCM samples per frame at 8000 Hz sample rate
+        return 160;
     }
     private boolean closed = false;
 

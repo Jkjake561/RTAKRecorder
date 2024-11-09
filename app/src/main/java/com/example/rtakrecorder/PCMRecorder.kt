@@ -1,13 +1,11 @@
 package com.example.rtakrecorder
-import com.example.rtakrecorder.Codec2
+
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
-import android.media.AudioTrack
 import android.media.MediaRecorder
-import android.media.AudioAttributes
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import java.io.File
@@ -15,10 +13,14 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import java.nio.ByteBuffer
+import java.nio.ByteOrder
+
+import android.media.AudioAttributes
+import android.media.AudioTrack
 
 class PCMRecorder(private val context: Context) {
     private var audioRecorder: AudioRecord? = null
-    val bufferSize = AudioRecord.getMinBufferSize(
+    private val bufferSize = AudioRecord.getMinBufferSize(
         Codec2.REQUIRED_SAMPLE_RATE,
         AudioFormat.CHANNEL_IN_MONO,
         AudioFormat.ENCODING_PCM_16BIT
@@ -60,15 +62,18 @@ class PCMRecorder(private val context: Context) {
 
             // Start recording in a background thread
             Thread {
-                val buffer = ShortArray(bufferSize / 2) // Using a smaller buffer to better align with AudioTrack playback
+                val shortBuffer = ShortArray(bufferSize / 2) // Buffer size in short units
                 while (isRecording) {
-                    val read = audioRecorder?.read(buffer, 0, buffer.size) ?: 0
-                    val byteBuffer = ByteArray(read * 2)
-                    for (i in 0 until read) {
-                        byteBuffer[i * 2] = (buffer[i].toInt() and 0x00FF).toByte()
-                        byteBuffer[i * 2 + 1] = (buffer[i].toInt() shr 8).toByte()
+                    val read = audioRecorder?.read(shortBuffer, 0, shortBuffer.size) ?: 0
+                    if (read > 0) {
+                        // Convert shortBuffer to byte array for writing to file
+                        val byteBuffer = ByteBuffer.allocate(read * 2)
+                        byteBuffer.order(ByteOrder.LITTLE_ENDIAN)
+                        shortBuffer.take(read).forEach { sample ->
+                            byteBuffer.putShort(sample)
+                        }
+                        fileOutputStream.write(byteBuffer.array())
                     }
-                    fileOutputStream.write(byteBuffer, 0, byteBuffer.size)
                 }
                 fileOutputStream.close()
             }.start()
@@ -97,28 +102,36 @@ class PCMRecorder(private val context: Context) {
                 pcmFile.name.replace(".pcm", ".c2")  // Change the extension for Codec2 file
             )
             try {
-                val codec2 = Codec2.createInstance(Codec2.Mode._2400)
-                val codec2OutputStream = FileOutputStream(codec2OutputFile)
-
+                // Read PCM file into byte array
                 val pcmInputStream = FileInputStream(pcmFile)
-                val pcmBuffer = ByteArray(320) // 160 samples * 2 bytes per sample
-
-                var bytesRead: Int
-                while (pcmInputStream.read(pcmBuffer).also { bytesRead = it } == pcmBuffer.size) {
-                    val encodedData = codec2.encode(pcmBuffer)
-                    codec2OutputStream.write(encodedData.array())
-                }
-
-                // Handle any remaining samples (padding may be necessary)
-                if (bytesRead > 0 && bytesRead < pcmBuffer.size) {
-                    // Pad the remaining buffer with zeros
-                    pcmBuffer.fill(0, bytesRead, pcmBuffer.size)
-                    val encodedData = codec2.encode(pcmBuffer)
-                    codec2OutputStream.write(encodedData.array())
-                }
-
+                val pcmBytes = pcmInputStream.readBytes()
                 pcmInputStream.close()
+
+                // Create Codec2 instance
+                val codec2 = Codec2.createInstance(Codec2.Mode._2400)
+
+                // Encode PCM bytes to Codec2 format
+                val codec2ByteBuffer = codec2.encode(ByteBuffer.wrap(pcmBytes))
+
+                // Prepare the Codec2 file header (magic number, version, mode, etc.)
+                val header = byteArrayOf(
+                    0xC0.toByte(), 0xDE.toByte(), 0xC2.toByte(), // Magic number "CODEC2"
+                    0x01, 0x00,                                 // Version (major 1, minor 0)
+                    Codec2.Mode._2400.ordinal.toByte(),         // Mode (using 2400 in this case)
+                    0x00                                        // Flags (set to 0)
+                )
+
+                // Combine header and encoded data
+                val finalData = ByteArray(header.size + codec2ByteBuffer.remaining())
+                System.arraycopy(header, 0, finalData, 0, header.size)
+                codec2ByteBuffer.get(finalData, header.size, codec2ByteBuffer.remaining())
+
+                // Write the header and encoded data to .c2 file
+                val codec2OutputStream = FileOutputStream(codec2OutputFile)
+                codec2OutputStream.write(finalData)
                 codec2OutputStream.close()
+
+                // Close the Codec2 instance
                 codec2.close()
 
                 Log.d("PCMRecorder", "Encoded file saved at: ${codec2OutputFile.absolutePath}")
@@ -129,58 +142,21 @@ class PCMRecorder(private val context: Context) {
         }
     }
 
-    fun playPCMFile(pcmFilePath: String) {
-        Thread {
-            try {
-                val fileInputStream = FileInputStream(pcmFilePath)
-                val bufferSize = AudioTrack.getMinBufferSize(
-                    Codec2.REQUIRED_SAMPLE_RATE,
-                    AudioFormat.CHANNEL_OUT_MONO,
-                    AudioFormat.ENCODING_PCM_16BIT
-                )
-
-                val audioTrack = AudioTrack.Builder()
-                    .setAudioAttributes(
-                        AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_MEDIA)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                            .build()
-                    )
-                    .setAudioFormat(
-                        AudioFormat.Builder()
-                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                            .setSampleRate(Codec2.REQUIRED_SAMPLE_RATE)
-                            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                            .build()
-                    )
-                    .setBufferSizeInBytes(bufferSize)
-                    .build()
-
-                val buffer = ByteArray(bufferSize)
-                audioTrack.play()
-
-                var read: Int
-                while (fileInputStream.read(buffer).also { read = it } != -1) {
-                    audioTrack.write(buffer, 0, read)
-                }
-
-                audioTrack.stop()
-                audioTrack.release()
-                fileInputStream.close()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }.start()
-    }
-
     fun playCodec2File(codec2FilePath: String) {
         Thread {
             try {
-                val codec2 = Codec2.createInstance(Codec2.Mode._2400)
+                // Read Codec2 data from file
                 val codec2InputStream = FileInputStream(codec2FilePath)
-                val encodedFrameSize = codec2.getEncodedFrameSize() // Should match the Codec2 frame size for the mode
-                val codec2Buffer = ByteArray(encodedFrameSize)
+                val codec2Bytes = codec2InputStream.readBytes()
+                codec2InputStream.close()
 
+                // Create Codec2 instance
+                val codec2 = Codec2.createInstance(Codec2.Mode._2400)
+
+                // Decode Codec2 data to PCM
+                val pcmByteBuffer = codec2.decode(ByteBuffer.wrap(codec2Bytes))
+
+                // Prepare AudioTrack for playback
                 val audioTrack = AudioTrack.Builder()
                     .setAudioAttributes(
                         AudioAttributes.Builder()
@@ -195,22 +171,18 @@ class PCMRecorder(private val context: Context) {
                             .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                             .build()
                     )
-                    .setBufferSizeInBytes(Codec2.REQUIRED_SAMPLE_RATE * 2) // Adjust buffer size as needed
+                    .setBufferSizeInBytes(pcmByteBuffer.remaining())
                     .build()
 
+                // Play the PCM data
                 audioTrack.play()
-
-                var bytesRead: Int
-                while (codec2InputStream.read(codec2Buffer).also { bytesRead = it } == codec2Buffer.size) {
-                    val decodedData = codec2.decode(codec2Buffer)
-                    val pcmBytes = ByteArray(decodedData.remaining())
-                    decodedData.get(pcmBytes)
-                    audioTrack.write(pcmBytes, 0, pcmBytes.size)
-                }
-
+                val pcmBytes = ByteArray(pcmByteBuffer.remaining())
+                pcmByteBuffer.get(pcmBytes)
+                audioTrack.write(pcmBytes, 0, pcmBytes.size)
                 audioTrack.stop()
                 audioTrack.release()
-                codec2InputStream.close()
+
+                // Close the Codec2 instance
                 codec2.close()
             } catch (e: Exception) {
                 Log.e("PCMRecorder", "Playback of Codec2 file failed: ${e.message}")
