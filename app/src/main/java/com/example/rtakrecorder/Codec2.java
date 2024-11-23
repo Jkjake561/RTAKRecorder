@@ -24,7 +24,7 @@ public class Codec2 implements AutoCloseable {
         _1200,
         _700C
     }
-    public static byte[] makeHeader(int mode) {
+    public static byte[] makeHeader(int mode, boolean includeFlags) {
         byte[] header = new byte[7];
         header[0] = (byte) 0xc0; // Codec2 magic number
         header[1] = (byte) 0xde; // Codec2 magic number
@@ -32,7 +32,7 @@ public class Codec2 implements AutoCloseable {
         header[3] = 1; // version_major
         header[4] = 0; // version_minor
         header[5] = (byte) mode; // codec mode
-        header[6] = 0; // flags
+        header[6] = (byte) (includeFlags ? 1 : 0); // flags
         return header;
     }
     public int getEncodedFrameSize() {
