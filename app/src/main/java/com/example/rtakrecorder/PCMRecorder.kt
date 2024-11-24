@@ -14,22 +14,20 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.abs
+import java.io.ByteArrayOutputStream
 
 import android.media.AudioAttributes
 import android.media.AudioTrack
 
 class PCMRecorder(private val context: Context) {
     private var audioRecorder: AudioRecord? = null
-    private val bufferSize = AudioRecord.getMinBufferSize(
-        Codec2.REQUIRED_SAMPLE_RATE,
-        AudioFormat.CHANNEL_IN_MONO,
-        AudioFormat.ENCODING_PCM_16BIT
-    )
+    private val staticBufferSize = 4096 // Using a fixed buffer size
     private var isRecording = false
     private var outputFile: File? = null
 
     fun startRecording() {
-        Log.d("PCMRecorder", "Starting recording")
+        Log.d("PCMRecorder", "Starting recording with static buffer size: $staticBufferSize bytes")
 
         // Create the output directory
         val outputDir = File(context.getExternalFilesDir(null), "Recordings")
@@ -54,7 +52,7 @@ class PCMRecorder(private val context: Context) {
                         .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
                         .build()
                 )
-                .setBufferSizeInBytes(bufferSize)
+                .setBufferSizeInBytes(staticBufferSize) // Use static buffer size
                 .build()
 
             audioRecorder?.startRecording()
@@ -62,7 +60,7 @@ class PCMRecorder(private val context: Context) {
 
             // Start recording in a background thread
             Thread {
-                val shortBuffer = ShortArray(bufferSize / 2) // Buffer size in short units
+                val shortBuffer = ShortArray(staticBufferSize / 2) // Buffer size in short units
                 while (isRecording) {
                     val read = audioRecorder?.read(shortBuffer, 0, shortBuffer.size) ?: 0
                     if (read > 0) {
@@ -93,7 +91,9 @@ class PCMRecorder(private val context: Context) {
         audioRecorder = null
 
         // Encode the PCM file to Codec2 format
+
         encodePCMToCodec2()
+
     }
 
     private fun encodePCMToCodec2() {
@@ -112,16 +112,27 @@ class PCMRecorder(private val context: Context) {
                 val totalFrames = pcmBytes.size / frameSize
                 val leftoverBytes = pcmBytes.size % frameSize
 
-                if (leftoverBytes > 0) {
-                    Log.d("PCMRecorder", "Leftover bytes detected: $leftoverBytes")
-                }
+                Log.d("PCMRecorder", "Frame Size: $frameSize, Total Frames: $totalFrames, Leftover Bytes: $leftoverBytes")
 
-                // Use only aligned PCM data
+                // Align PCM data
                 val alignedPCMBytes = pcmBytes.copyOf(totalFrames * frameSize)
                 Log.d("PCMRecorder", "Aligned PCM Size: ${alignedPCMBytes.size} bytes")
 
                 // Encode aligned PCM bytes to Codec2 format
                 val codec2ByteBuffer = codec2.encode(ByteBuffer.wrap(alignedPCMBytes))
+                Log.d("PCMRecorder", "PCM Bytes Passed to Encoder: ${alignedPCMBytes.size}")
+                Log.d("PCMRecorder", "Encoded Buffer Size (before trimming): ${codec2ByteBuffer.remaining()} bytes")
+
+                // Trim trailing zero-padding from the encoded buffer
+                val trimmedEncodedBuffer = ByteArray(codec2ByteBuffer.remaining())
+                codec2ByteBuffer.get(trimmedEncodedBuffer)
+
+                var actualEncodedSize = trimmedEncodedBuffer.size
+                while (actualEncodedSize > 0 && trimmedEncodedBuffer[actualEncodedSize - 1] == 0.toByte()) {
+                    actualEncodedSize--
+                }
+
+                Log.d("PCMRecorder", "Encoded Buffer Size (after trimming): $actualEncodedSize bytes")
 
                 // Prepare the Codec2 file header
                 val header = byteArrayOf(
@@ -132,14 +143,14 @@ class PCMRecorder(private val context: Context) {
                 )
                 Log.d("PCMRecorder", "Header prepared for Codec2 file: ${header.joinToString()}")
 
-                // Combine header and encoded data
-                val finalData = ByteArray(header.size + codec2ByteBuffer.remaining())
+                // Combine header and trimmed encoded data
+                val finalData = ByteArray(header.size + actualEncodedSize)
                 System.arraycopy(header, 0, finalData, 0, header.size)
-                codec2ByteBuffer.get(finalData, header.size, codec2ByteBuffer.remaining())
-                Log.d("PCMRecorder", "Encoded data size (excluding header): ${codec2ByteBuffer.remaining()} bytes")
+                System.arraycopy(trimmedEncodedBuffer, 0, finalData, header.size, actualEncodedSize)
 
                 // Write to file
                 codec2OutputFile.writeBytes(finalData)
+                Log.d("PCMRecorder", "Final Codec2 File Size: ${finalData.size} bytes")
                 Log.d("PCMRecorder", "Codec2 file written successfully: ${codec2OutputFile.absolutePath}")
 
                 codec2.close()
@@ -149,6 +160,8 @@ class PCMRecorder(private val context: Context) {
             }
         }
     }
+
+
 
 
 
