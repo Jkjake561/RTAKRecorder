@@ -1,63 +1,59 @@
 package com.example.rtakrecorder
 
+import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.OptIn
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import android.widget.Toast
-import com.example.rtakrecorder.ui.theme.RTAKrecorderTheme
-import android.media.AudioFormat
-import android.util.Log
-import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.ActivityCompat
-import java.io.FileInputStream
+//import androidx.media3.common.util.UnstableApi
+import com.example.rtakrecorder.ui.theme.RTAKrecorderTheme
 import android.media.AudioTrack
 import android.media.AudioAttributes
-import android.content.Context
+
+
+import androidx.activity.enableEdgeToEdge
+
+import android.media.AudioFormat
+
+import java.io.FileInputStream
+
 
 class MainActivity : ComponentActivity() {
 
-    // Use the modern Activity Result API for permissions
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
         if (isGranted) {
-            // Permission granted, continue with the app
-            Toast.makeText(this, "Permission Granted", Toast.LENGTH_SHORT).show() // Use 'this' as context here
+            Toast.makeText(this, "Permission Granted", Toast.LENGTH_SHORT).show()
         } else {
-            // Permission denied
-            Toast.makeText(this, "Permission Denied. Please allow microphone access.", Toast.LENGTH_LONG).show() // Use 'this' as context here
+            Toast.makeText(this, "Permission Denied. Please allow microphone access.", Toast.LENGTH_LONG).show()
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
 
-        // Set the content before handling permissions
         setContent {
-            val context = this@MainActivity // or use LocalContext.current in Composable scope
             RTAKrecorderTheme {
-                RecordingButtons(PCMRecorder(context))
+                RecordingButtons(recorder = PCMRecorder(this))
             }
         }
 
-        // Check if the permission is already granted
-        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-            // Permission is granted, continue with the app
-            Toast.makeText(this, "Permission already granted", Toast.LENGTH_SHORT).show() // Use 'this' as context here
-        } else {
-            // Request the permission
-            requestPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
 }
@@ -75,10 +71,9 @@ fun RecordingButtons(recorder: PCMRecorder) {
             onClick = {
                 if (ActivityCompat.checkSelfPermission(
                         context,
-                        android.Manifest.permission.RECORD_AUDIO
+                        Manifest.permission.RECORD_AUDIO
                     ) == PackageManager.PERMISSION_GRANTED
                 ) {
-                    Log.d("RecordingButtons", "Start Recording button pressed")
                     recorder.startRecording()
                 } else {
                     Toast.makeText(context, "Microphone permission is required to record", Toast.LENGTH_LONG).show()
@@ -88,83 +83,67 @@ fun RecordingButtons(recorder: PCMRecorder) {
                 .fillMaxWidth()
                 .padding(bottom = 16.dp)
         ) {
-            Text(text = "Start Recording")
+            Text("Start Recording")
         }
         Button(
-            onClick = {
-                Log.d("RecordingButtons", "Stop Recording button pressed")
-                recorder.stopRecording()
-            },
-            modifier = Modifier.fillMaxWidth()
+            onClick = { recorder.stopRecording() },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp)
         ) {
-            Text(text = "Stop Recording")
+            Text("Stop Recording")
         }
         Button(
             onClick = {
-                recorder.getOutputFilePath()?.let { filePath ->
-                    Log.d("RecordingButtons", "Play Recording button pressed")
-                    playPCMFile(filePath)
-                } ?: run {
-                    Toast.makeText(context, "No file to play", Toast.LENGTH_LONG).show()
+                val filePath = recorder.getPCMFilePath()
+                if (filePath != null) {
+                    recorder.playPCMFile()
+                } else {
+                    Toast.makeText(context, "No PCM file to play", Toast.LENGTH_SHORT).show()
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp)
+        ) {
+            Text("Play PCM File")
+        }
+        Button(
+            onClick = {
+                recorder.encodePCMToCodec2()
+                val codec2Path = recorder.getCodec2FilePath()
+                if (codec2Path != null) {
+                    Toast.makeText(context, "Codec2 file encoded at: $codec2Path", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(context, "Failed to encode Codec2 file", Toast.LENGTH_SHORT).show()
                 }
             },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text(text = "Play Recording")
+            Text("Encode PCM to Codec2")
+        }
+        Button(
+            onClick = {
+                val filePath = recorder.getCodec2FilePath()
+                if (filePath != null) {
+                    recorder.playCodec2File()
+                } else {
+                    Toast.makeText(context, "No Codec2 file to play", Toast.LENGTH_SHORT).show()
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Play Codec2 File")
         }
     }
 }
 
-// Play PCM file using AudioTrack
-fun playPCMFile(filePath: String) {
-    Thread {
-        try {
-            val fileInputStream = FileInputStream(filePath)
-            val bufferSize = AudioTrack.getMinBufferSize(
-                8000,
-                AudioFormat.CHANNEL_OUT_MONO,
-                AudioFormat.ENCODING_PCM_16BIT
-            )
 
-            val audioTrack = AudioTrack.Builder()
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                        .build()
-                )
-                .setAudioFormat(
-                    AudioFormat.Builder()
-                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                        .setSampleRate(8000)
-                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                        .build()
-                )
-                .setBufferSizeInBytes(bufferSize)
-                .build()
-
-            val buffer = ByteArray(bufferSize)
-            audioTrack.play()
-
-            var read: Int
-            while (fileInputStream.read(buffer).also { read = it } != -1) {
-                audioTrack.write(buffer, 0, read)
-            }
-
-            audioTrack.stop()
-            audioTrack.release()
-            fileInputStream.close()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }.start()
-}
 
 @Preview(showBackground = true)
 @Composable
 fun RecordingButtonsPreview() {
-    val context = LocalContext.current // Use a default or mock context
     RTAKrecorderTheme {
-        RecordingButtons(PCMRecorder(context))  // Pass the context here
+        RecordingButtons(PCMRecorder(LocalContext.current))
     }
 }
