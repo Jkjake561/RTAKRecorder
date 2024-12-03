@@ -5,6 +5,7 @@ import androidx.annotation.NonNull;
 import org.jetbrains.annotations.NotNull;
 
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.ShortBuffer;
 
 public class Codec2 implements AutoCloseable {
@@ -89,20 +90,12 @@ public class Codec2 implements AutoCloseable {
         return nativeEncodeCodec2(codec2StatePtr, pcmBuffer, pcmBuffer.remaining() / 2, RuntimeException.class);
     }
 
+    private static native ByteBuffer nativeDecodeCodec2(long codec2StatePtr, ByteBuffer encodedData, Class<RuntimeException> runtimeExceptionClass) throws RuntimeException;
 
-
-    private static native void nativeDecodeCodec2(
-            long codec2StatePtr,
-            ByteBuffer encodedData,
-            ShortBuffer outputBuffer,
-            Class<RuntimeException> runtimeExceptionClass
-    ) throws RuntimeException;
-
-    public void decode(ByteBuffer encodedData, ShortBuffer outputBuffer) throws RuntimeException {
-        if (!encodedData.isDirect() || !outputBuffer.isDirect()) {
-            throw new IllegalArgumentException("Buffers must be direct");
-        }
-        nativeDecodeCodec2(codec2StatePtr, encodedData, outputBuffer, RuntimeException.class);
+    public ShortBuffer decode(ByteBuffer encodedData) throws RuntimeException {
+        if (!encodedData.isDirect())
+            throw new IllegalArgumentException("Buffer must be direct");
+        return nativeDecodeCodec2(codec2StatePtr, encodedData, RuntimeException.class).order(ByteOrder.nativeOrder()).asShortBuffer();
     }
 
     private static native void nativeDestroyCodec2State(long codec2StatePtr);

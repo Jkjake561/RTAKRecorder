@@ -265,44 +265,18 @@ class PCMRecorder(private val context: Context) {
                 }
 
                 // Prepare a buffer for the decoded PCM data
-                val pcmBuffer = ShortArray(frameCount * codec2.pcmFrameSize)
-                var pcmOffset = 0
-                var position = headerSize
+                val inputBufferSize = encodedBytes.size - headerSize
 
                 // Decode each frame
-                val frameBuffer = ByteBuffer.allocateDirect(codec2.encodedFrameSize).order(ByteOrder.LITTLE_ENDIAN)
-                val shortBuffer = ByteBuffer.allocateDirect(codec2.pcmFrameSize * 2)
-                    .order(ByteOrder.LITTLE_ENDIAN)
-                    .asShortBuffer()
+                val frameBuffer = ByteBuffer.allocateDirect(inputBufferSize).order(ByteOrder.LITTLE_ENDIAN)
 
-                while (position + codec2.encodedFrameSize <= headerSize + alignedPayloadSize) {
-                    frameBuffer.clear()
-                    shortBuffer.clear()
+                // Copy the frame data into the frameBuffer
+                frameBuffer.put(encodedBytes, headerSize, inputBufferSize)
 
-                    // Copy the frame data into the frameBuffer
-                    frameBuffer.put(encodedBytes, position, codec2.encodedFrameSize)
-                    frameBuffer.flip() // Prepare for reading
-
-                    // Decode the frame into PCM samples
-                    codec2.decode(frameBuffer, shortBuffer)
-
-                    // Ensure output buffer contains enough data
-                    if (shortBuffer.position() != codec2.pcmFrameSize) {
-                        Log.e(
-                            "Codec2Playback",
-                            "Decoded PCM data size mismatch: expected ${codec2.pcmFrameSize}, got ${shortBuffer.position()}"
-                        )
-                        return@Thread
-                    }
-
-                    // Transfer decoded PCM data to the PCM buffer
-                    shortBuffer.flip()
-                    while (shortBuffer.hasRemaining()) {
-                        pcmBuffer[pcmOffset++] = shortBuffer.get()
-                    }
-
-                    position += codec2.encodedFrameSize
-                }
+                // Decode the frame into PCM samples
+                val temp = codec2.decode(frameBuffer);
+                val pcmBuffer = ShortArray(temp.capacity())
+                temp.get(pcmBuffer)
 
                 // Configure AudioTrack for playback
                 val bufferSize = AudioTrack.getMinBufferSize(
@@ -331,13 +305,14 @@ class PCMRecorder(private val context: Context) {
                 // Start playback
                 audioTrack.play()
 
-                // Write the entire pre-decoded PCM buffer
-                val pcmData = ByteArray(pcmBuffer.size * 2)
-                for (i in pcmBuffer.indices) {
-                    pcmData[i * 2] = (pcmBuffer[i].toInt() and 0xFF).toByte()
-                    pcmData[i * 2 + 1] = ((pcmBuffer[i].toInt() shr 8) and 0xFF).toByte()
-                }
-                audioTrack.write(pcmData, 0, pcmData.size)
+//                // Write the entire pre-decoded PCM buffer
+//                val pcmData = ByteArray(pcmBuffer.size * 2)
+//                for (i in pcmBuffer.indices) {
+//                    pcmData[i * 2] = (pcmBuffer[i].toInt() and 0xFF).toByte()
+//                    pcmData[i * 2 + 1] = ((pcmBuffer[i].toInt() shr 8) and 0xFF).toByte()
+//                }
+
+                audioTrack.write(pcmBuffer, 0, pcmBuffer.size)
 
                 // Stop and release resources
                 audioTrack.stop()
@@ -352,17 +327,6 @@ class PCMRecorder(private val context: Context) {
             }
         }.start()
     }
-
-
-
-
-
-
-
-
-
-
-
 
     fun getPCMFilePath(): String? = pcmFile?.absolutePath
     fun getCodec2FilePath(): String? = codec2File?.absolutePath

@@ -94,7 +94,8 @@ Java_com_example_rtakrecorder_Codec2_nativeEncodeCodec2(JNIEnv *env, jclass claz
         if ((sample_count - i) >= samples_per_frame) {
             codec2_encode(codec2_state, &output_buffer[output_buf_offset], &pcm_data[i]);
             output_buf_offset += bytes_per_frame;
-        } else {
+        }
+        else {
             // Handle incomplete frame by padding with zeros
             std::vector<short> padded_input(samples_per_frame, 0);
             memcpy(padded_input.data(), &pcm_data[i], (sample_count - i) * sizeof(short));
@@ -119,57 +120,65 @@ extern "C" {
 // Declare the logToJava function before using it
 void logToJava(JNIEnv *env, const char *tag, const char *message);
 
-JNIEXPORT void JNICALL
-Java_com_example_rtakrecorder_Codec2_nativeDecodeCodec2(
-        JNIEnv *env, jclass clazz, jlong codec2_state_ptr, jobject encodedDataBuffer,
-        jobject outputBuffer, jclass runtime_exception_class) {
-
-    if (codec2_state_ptr == 0) {
+JNIEXPORT jobject JNICALL
+Java_com_example_rtakrecorder_Codec2_nativeDecodeCodec2(JNIEnv *env, jclass clazz, jlong codec2_state_ptr, jobject encodedDataBuffer, jclass runtime_exception_class) {
+    if (!codec2_state_ptr) {
         env->ThrowNew(runtime_exception_class, "Invalid codec2_state_ptr");
-        return;
+        return nullptr;
     }
 
-    unsigned char *encodedBytes = reinterpret_cast<unsigned char *>(env->GetDirectBufferAddress(encodedDataBuffer));
-    short *outputSamples = reinterpret_cast<short *>(env->GetDirectBufferAddress(outputBuffer));
+    unsigned char* encodedBytes = reinterpret_cast<unsigned char *>(env->GetDirectBufferAddress(encodedDataBuffer));
 
-    if (!encodedBytes || !outputSamples) {
+    if (!encodedBytes) {
         env->ThrowNew(runtime_exception_class, "Direct buffer access failed");
-        return;
+        return nullptr;
     }
 
-    auto codec2_state = reinterpret_cast<struct CODEC2 *>(codec2_state_ptr);
-
-    jlong encodedLen = env->GetDirectBufferCapacity(encodedDataBuffer);
-    jlong outputLen = env->GetDirectBufferCapacity(outputBuffer) / sizeof(short);
+    CODEC2* codec2_state = reinterpret_cast<CODEC2*>(codec2_state_ptr);
 
     jint bytesPerFrame = codec2_bytes_per_frame(codec2_state);
     jint samplesPerFrame = codec2_samples_per_frame(codec2_state);
+    jlong encodedLen = env->GetDirectBufferCapacity(encodedDataBuffer);
 
     if (encodedLen % bytesPerFrame != 0) {
-        logToJava(env, "Codec2Native", "Encoded data is not aligned with frame size");
+        env->ThrowNew(runtime_exception_class, "Encoded data is not aligned with frame size");
+        return nullptr;
     }
 
-    int frameCount = encodedLen / bytesPerFrame;
-    if (outputLen < frameCount * samplesPerFrame) {
-        env->ThrowNew(runtime_exception_class, "Output buffer too small");
-        return;
+    jlong frameCount = encodedLen / bytesPerFrame;
+    jlong outputLen = frameCount * samplesPerFrame * static_cast<jlong>(sizeof(short));
+    if (outputLen > INT32_MAX) {
+        env->ThrowNew(runtime_exception_class, "Output buffer size is too large for ByteBuffer");
+        return nullptr;
     }
 
-    for (int i = 0; i < frameCount; ++i) {
-        codec2_decode(codec2_state, outputSamples + (i * samplesPerFrame),
-                      encodedBytes + (i * bytesPerFrame));
+    short* outputSamples = reinterpret_cast<short*>(malloc(outputLen));
+    if (!outputSamples) {
+        env->ThrowNew(runtime_exception_class, "Error occurred while allocating output buffer");
+        return nullptr;
     }
+
+    for (int i = 0; i < frameCount; ++i)
+        codec2_decode(codec2_state, &outputSamples[i * samplesPerFrame],&encodedBytes[i * bytesPerFrame]);
+
+    jobject outputBuffer = env->NewDirectByteBuffer(outputSamples, outputLen);
+    if (!outputBuffer) {
+        env->ThrowNew(runtime_exception_class, "Error occurred while creating output ByteBuffer");
+        return nullptr;
+    }
+
+    return outputBuffer;
 }
 
 // Define logToJava after its declaration
 void logToJava(JNIEnv *env, const char *tag, const char *message) {
     jclass logClass = env->FindClass("android/util/Log");
-    jmethodID logMethod = env->GetStaticMethodID(logClass, "d", "(Ljava/lang/String;Ljava/lang/String;)I");
+    jmethodID logMethod = env->GetStaticMethodID(logClass, "d",
+                                                 "(Ljava/lang/String;Ljava/lang/String;)I");
     jstring tagStr = env->NewStringUTF(tag);
     jstring msgStr = env->NewStringUTF(message);
     env->CallStaticIntMethod(logClass, logMethod, tagStr, msgStr);
     env->DeleteLocalRef(tagStr);
     env->DeleteLocalRef(msgStr);
 }
-
 }
