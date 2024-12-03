@@ -92,10 +92,10 @@ public class Codec2 implements AutoCloseable {
 
     private static native ByteBuffer nativeDecodeCodec2(long codec2StatePtr, ByteBuffer encodedData, Class<RuntimeException> runtimeExceptionClass) throws RuntimeException;
 
-    public ShortBuffer decode(ByteBuffer encodedData) throws RuntimeException {
+    public ByteBuffer decode(ByteBuffer encodedData) throws RuntimeException {
         if (!encodedData.isDirect())
             throw new IllegalArgumentException("Buffer must be direct");
-        return nativeDecodeCodec2(codec2StatePtr, encodedData, RuntimeException.class).order(ByteOrder.nativeOrder()).asShortBuffer();
+        return nativeDecodeCodec2(codec2StatePtr, encodedData, RuntimeException.class).order(ByteOrder.nativeOrder());
     }
 
     private static native void nativeDestroyCodec2State(long codec2StatePtr);
