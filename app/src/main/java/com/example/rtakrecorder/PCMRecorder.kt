@@ -252,18 +252,6 @@ class PCMRecorder(private val context: Context) {
                 Log.d("Codec2Playback", "Payload size: ${encodedBytes.size - headerSize}")
                 Log.d("Codec2Playback", "Expected frame size: ${codec2.encodedFrameSize}")
 
-                // Calculate aligned payload size
-                val payloadSize = encodedBytes.size - headerSize
-                val alignedPayloadSize = (payloadSize / codec2.encodedFrameSize) * codec2.encodedFrameSize
-                val frameCount = alignedPayloadSize / codec2.encodedFrameSize
-
-                if (payloadSize % codec2.encodedFrameSize != 0) {
-                    Log.w(
-                        "Codec2Playback",
-                        "Encoded data size (${payloadSize}) is not a multiple of frame size (${codec2.encodedFrameSize}). Truncating extra bytes."
-                    )
-                }
-
                 // Prepare a buffer for the decoded PCM data
                 val inputBufferSize = encodedBytes.size - headerSize
 
@@ -275,8 +263,6 @@ class PCMRecorder(private val context: Context) {
 
                 // Decode the frame into PCM samples
                 val temp = codec2.decode(frameBuffer);
-                val pcmBuffer = ShortArray(temp.capacity())
-                temp.get(pcmBuffer)
 
                 // Configure AudioTrack for playback
                 val bufferSize = AudioTrack.getMinBufferSize(
@@ -304,15 +290,7 @@ class PCMRecorder(private val context: Context) {
 
                 // Start playback
                 audioTrack.play()
-
-//                // Write the entire pre-decoded PCM buffer
-//                val pcmData = ByteArray(pcmBuffer.size * 2)
-//                for (i in pcmBuffer.indices) {
-//                    pcmData[i * 2] = (pcmBuffer[i].toInt() and 0xFF).toByte()
-//                    pcmData[i * 2 + 1] = ((pcmBuffer[i].toInt() shr 8) and 0xFF).toByte()
-//                }
-
-                audioTrack.write(pcmBuffer, 0, pcmBuffer.size)
+                audioTrack.write(temp, temp.capacity(), AudioTrack.WRITE_BLOCKING);
 
                 // Stop and release resources
                 audioTrack.stop()
